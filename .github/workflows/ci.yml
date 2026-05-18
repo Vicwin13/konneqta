@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main, dev]
 
+# prevents duplicate runs on same branch/PR
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     name: Lint, Type-check & Build
@@ -19,26 +24,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10.13.1
-          run_install: false
+      - name: Enable Corepack
+        run: corepack enable
 
-      - name: Get pnpm store path
-        id: pnpm-cache
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Cache pnpm dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-
+      - name: Activate pnpm
+        run: corepack prepare pnpm@10.13.1 --activate
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --strict-peer-dependencies
 
       - name: Run lint
         run: pnpm run lint
