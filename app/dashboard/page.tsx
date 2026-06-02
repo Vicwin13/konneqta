@@ -19,7 +19,7 @@ export default async function DashboardPage() {
           Dashboard
         </h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Welcome back{user.user_metadata?.full_name ? `, ${user.user_metadata.full_name}` : ""}!
+          Welcome back {user.user_metadata?.full_name ? `, ${user.user_metadata.full_name}` : ""}!
         </p>
 
         <div className="mt-6 space-y-3">
