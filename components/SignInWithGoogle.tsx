@@ -14,7 +14,7 @@ export default function SignInWithGoogle() {
         });
     }
     return(
-        <button onClick={handleSignIn}>
+        <button className="border py-2 px-4 hover:bg-black hover:text-whitedark:border-white rounded-4xl cursor-pointer dark:text-white" onClick={handleSignIn}>
             Sign in with Google
         </button>
     )
