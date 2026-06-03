@@ -1,5 +1,6 @@
-import DarkModeToggle from "../components/DarkModeToggle";
-import SignInWithGoogle from "../components/SignInWithGoogle";
+import DarkModeToggle from "@/components/DarkModeToggle";
+import Link from "next/link";
+import SignInWithGoogle from "@/components/SignInWithGoogle";
 
 export default function Home() {
   return (
@@ -10,7 +11,10 @@ export default function Home() {
       </h1>
       <div className="mt-6 flex items-center justify-center gap-4">
         <p className="border py-2 px-4 hover:bg-black hover:text-white dark:border-white rounded-4xl cursor-pointer dark:text-white">
-          Sign up or Login</p>
+          <Link href="/auth">
+            Sign up or Login
+          </Link>
+        </p>
         <SignInWithGoogle />
       </div>
     </main>
