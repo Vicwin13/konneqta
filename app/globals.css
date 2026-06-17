@@ -38,3 +38,66 @@
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 } */
+
+/* ---- Flip card ---- */
+.flip-card {
+  perspective: 1200px;
+}
+
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.flip-card.flipped .flip-card-inner {
+  transform: rotateY(180deg);
+}
+
+.flip-card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.flip-card-back {
+  transform: rotateY(180deg);
+}
+
+/* ---- Custom scrollbar for social links list ---- */
+.scrollable-links {
+  scrollbar-width: thin;
+  scrollbar-color: #d4d4d8 transparent;
+}
+
+.scrollable-links::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable-links::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollable-links::-webkit-scrollbar-thumb {
+  background-color: #d4d4d8;
+  border-radius: 3px;
+}
+
+.scrollable-links::-webkit-scrollbar-thumb:hover {
+  background-color: #a1a1aa;
+}
+
+.dark .scrollable-links {
+  scrollbar-color: #52525b transparent;
+}
+
+.dark .scrollable-links::-webkit-scrollbar-thumb {
+  background-color: #52525b;
+}
+
+.dark .scrollable-links::-webkit-scrollbar-thumb:hover {
+  background-color: #71717a;
+}
