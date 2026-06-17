@@ -1,57 +1,57 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { SOCIAL_PLATFORMS } from "@/lib/social-platforms";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
-interface OnboardingFormProps {
-  fullName: string;
-  email: string;
+interface EditProfileFormProps {
+  initialProfile: {
+    username: string;
+    full_name: string;
+    email: string;
+    job_title: string;
+    company: string;
+    phone: string;
+    bio: string;
+    avatar_url: string;
+  };
+  initialSocialLinks: { id?: string; platform: string; url: string }[];
 }
 
 type SocialLink = {
+  id?: string;
   platform: string;
   url: string;
 };
 
-export default function OnboardingForm({
-  fullName,
-  email,
-}: OnboardingFormProps) {
+export default function EditProfileForm({
+  initialProfile,
+  initialSocialLinks,
+}: EditProfileFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [form, setForm] = useState({
-    username: "",
-    full_name: fullName,
-    email: email,
-    job_title: "",
-    company: "",
-    phone: "",
-    bio: "",
-    avatar_url: "",
-  });
-
-  // Social links — dynamic list the user builds during onboarding
-  const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
+  const [form, setForm] = useState(initialProfile);
+  const [socialLinks, setSocialLinks] = useState<SocialLink[]>(
+    initialSocialLinks.length > 0
+      ? initialSocialLinks
+      : [{ platform: "website", url: "" }]
+  );
 
   const [loading, setLoading] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  // avatarPreview may be an existing remote URL or a local object URL
+  const [avatarPreview, setAvatarPreview] = useState<string>(
+    initialProfile.avatar_url ?? ""
+  );
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string>("");
-
-  // Async check result (only set inside the debounce callback to satisfy
-  // React's rule against calling setState synchronously in an effect)
-  const [usernameCheck, setUsernameCheck] = useState<
-    "idle" | "checking" | "available" | "taken"
-  >("idle");
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
-    // Normalize username as the user types: lowercase, alphanumeric + underscores only
     if (e.target.name === "username") {
       const normalized = e.target.value
         .toLowerCase()
@@ -59,60 +59,9 @@ export default function OnboardingForm({
       setForm({ ...form, username: normalized });
       return;
     }
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // Derived validation — computed during render, no setState needed
-  const username = form.username.trim();
-  const usernameTooShort = username.length > 0 && username.length < 3;
-  const usernameInvalid =
-    username.length >= 3 && !/^[a-z0-9_]{3,20}$/.test(username);
-
-  // Final status used by the UI (combines derived + async)
-  const usernameStatus: "idle" | "checking" | "available" | "taken" | "invalid" =
-    usernameTooShort
-      ? "idle"
-      : usernameInvalid
-        ? "invalid"
-        : usernameCheck;
-
-  // Debounced availability check — only runs for valid usernames
-  useEffect(() => {
-    if (!username || usernameTooShort || usernameInvalid) {
-      return;
-    }
-
-    const debounceTimer = setTimeout(async () => {
-      try {
-        setUsernameCheck("checking");
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("username")
-          .eq("username", username)
-          .maybeSingle();
-
-        if (error) {
-          console.error("username check error:", error);
-          setUsernameCheck("idle");
-          return;
-        }
-
-        setUsernameCheck(data ? "taken" : "available");
-      } catch {
-        setUsernameCheck("idle");
-      }
-    }, 500); // 500ms debounce
-
-    return () => clearTimeout(debounceTimer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.username]);
-
-  // Store the selected file locally + show a preview.
-  // Upload only happens on submit (see handleSubmit).
   const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -126,8 +75,8 @@ export default function OnboardingForm({
       return;
     }
 
-    // Revoke previous preview to avoid memory leaks
-    if (avatarPreview) {
+    // Only revoke if it's a local object URL (not a remote http URL)
+    if (avatarPreview && avatarPreview.startsWith("blob:")) {
       URL.revokeObjectURL(avatarPreview);
     }
 
@@ -150,7 +99,9 @@ export default function OnboardingForm({
     value: string
   ) => {
     setSocialLinks((prev) =>
-      prev.map((link, i) => (i === index ? { ...link, [field]: value } : link))
+      prev.map((link, i) =>
+        i === index ? { ...link, [field]: value } : link
+      )
     );
   };
 
@@ -165,11 +116,11 @@ export default function OnboardingForm({
       } = await supabase.auth.getUser();
 
       if (!user) {
-        toast.error("You must be logged in to create a profile");
+        toast.error("You must be logged in to update your profile");
         return;
       }
 
-      // 1. Upload avatar (only happens on submit, not on selection)
+      // 1. Upload new avatar if a file was selected
       let avatarUrl = form.avatar_url;
       if (avatarFile) {
         const fileExt = avatarFile.name.split(".").pop();
@@ -190,19 +141,39 @@ export default function OnboardingForm({
         avatarUrl = publicUrl;
       }
 
-      // 2. Insert the profile row
-      const { error: profileError } = await supabase.from("profiles").insert({
-        ...form,
-        avatar_url: avatarUrl,
-        id: user.id,
-      });
+      // 2. UPDATE the profile row
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          username: form.username,
+          full_name: form.full_name,
+          job_title: form.job_title,
+          company: form.company,
+          phone: form.phone,
+          bio: form.bio,
+          avatar_url: avatarUrl,
+        })
+        .eq("id", user.id);
 
       if (profileError) {
         toast.error(profileError.message);
         return;
       }
 
-      // 3. Insert any social links the user added (filter out empty URLs)
+      // 3. Sync social links: delete existing first, then insert current set
+      const { error: deleteError } = await supabase
+        .from("social_links")
+        .delete()
+        .eq("profile_id", user.id);
+
+      if (deleteError) {
+        console.error("social_links delete error:", deleteError);
+        toast.error(
+          "Could not update social links (delete failed). Check that your database allows deleting social links."
+        );
+        return;
+      }
+
       const linksToInsert = socialLinks
         .filter((link) => link.url.trim().length > 0)
         .map((link) => ({
@@ -217,14 +188,18 @@ export default function OnboardingForm({
           .insert(linksToInsert);
 
         if (linksError) {
-          // Profile was created but links failed — warn but still proceed
           console.error("social_links insert error:", linksError);
           toast.error(
-            "Profile created, but we couldn't save your social links. You can add them later."
+            "Profile updated, but we couldn't save your social links. Please try again."
           );
+          return;
         }
       }
 
+      toast.success("Profile updated successfully");
+      // Refresh first to update the cached server-component data,
+      // then push to navigate to the freshly-fetched profile page.
+      router.refresh();
       router.push(`/${form.username}`);
     } catch {
       toast.error("Something went wrong. Please try again.");
@@ -243,14 +218,14 @@ export default function OnboardingForm({
     <main className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 dark:bg-black">
       <div className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Create your ID Card
+          Edit your ID Card
         </h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Fill in your details to set up your profile.
+          Update your details and links.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
-          {/* Avatar upload */}
+          {/* Avatar */}
           <div className="flex flex-col items-center">
             <button
               type="button"
@@ -312,87 +287,11 @@ export default function OnboardingForm({
               value={form.username}
               onChange={handleChange}
               required
-              className={
-                usernameStatus === "taken" || usernameStatus === "invalid"
-                  ? inputClassName +
-                    " border-red-500 focus:border-(--main-orange) focus:ring-red-500"
-                  : usernameStatus === "available"
-                    ? inputClassName +
-                      " border-green-500 focus:border-green-500 focus:ring-green-500"
-                    : inputClassName
-              }
+              className={inputClassName}
             />
-            {/* Username availability feedback */}
-            {usernameStatus === "invalid" && (
-              <p className="mt-1 text-xs text-red-500">
-                3–20 characters, letters/numbers/underscores only
-              </p>
-            )}
-            {usernameStatus === "checking" && (
-              <p className="mt-1 flex items-center gap-1 text-xs text-zinc-400">
-                <svg
-                  className="h-3 w-3 animate-spin"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-                Checking availability...
-              </p>
-            )}
-            {usernameStatus === "available" && (
-              <p className="mt-1 flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-                @{username} is available!
-              </p>
-            )}
-            {usernameStatus === "taken" && (
-              <p className="mt-1 flex items-center gap-1 text-xs text-red-500">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="m15 9-6 6M9 9l6 6" />
-                </svg>
-                @{username} is already taken
-              </p>
-            )}
           </div>
 
-          {/* Full Name — pre-filled from Google, editable */}
+          {/* Full Name */}
           <div>
             <label
               htmlFor="full_name"
@@ -410,7 +309,7 @@ export default function OnboardingForm({
             />
           </div>
 
-          {/* Email — pre-filled from Google, immutable */}
+          {/* Email (locked) */}
           <div>
             <label
               htmlFor="email"
@@ -536,13 +435,7 @@ export default function OnboardingForm({
               </button>
             </div>
 
-            <div className="scrollable-links flex min-h-10 max-h-64 flex-col gap-2 overflow-y-auto pr-1">
-              {socialLinks.length === 0 && (
-                <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                  No links added yet — tap{" "}
-                  <span className="font-medium">Add Link</span> to get started.
-                </p>
-              )}
+            <div className="scrollable-links flex min-h-10 max-h-12 flex-col gap-2 overflow-y-auto pr-1">
               {socialLinks.map((link, index) => {
                 const platform = SOCIAL_PLATFORMS.find(
                   (p) => p.id === link.platform
@@ -564,15 +457,14 @@ export default function OnboardingForm({
                           PlatformIcon ? "pl-8 pr-2" : "px-2"
                         }`}
                       >
-                        {SOCIAL_PLATFORMS.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.label}
-                          </option>
-                        ))}
+                      {SOCIAL_PLATFORMS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
                       </select>
                     </div>
 
-                    {/* URL input */}
                     <input
                       type="url"
                       value={link.url}
@@ -583,7 +475,6 @@ export default function OnboardingForm({
                       className={inputClassName}
                     />
 
-                    {/* Remove button */}
                     <button
                       type="button"
                       onClick={() => removeSocialLink(index)}
@@ -610,20 +501,61 @@ export default function OnboardingForm({
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={
-              loading ||
-              usernameStatus === "taken" ||
-              usernameStatus === "invalid" ||
-              usernameStatus === "checking"
-            }
-            className="mt-4 w-full cursor-pointer rounded-lg bg-(--main-orange) px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            {loading ? "Creating profile..." : "Create Profile"}
-          </button>
+          <div className="mt-4 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setShowCancelDialog(true)}
+              className="flex-1 cursor-pointer rounded-lg border border-zinc-300 px-4 py-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 cursor-pointer rounded-lg bg-(--main-orange) px-4 py-3 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? "Updating..." : "Update Profile"}
+            </button>
+          </div>
         </form>
       </div>
+
+      {/* Cancel confirmation dialog */}
+      {showCancelDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowCancelDialog(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+              Discard changes?
+            </h2>
+            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+              If you leave now, any unsaved changes will be lost and you will go
+              back to your profile card.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCancelDialog(false)}
+                className="flex-1 cursor-pointer rounded-lg bg-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/${form.username}`)}
+                className="flex-1 cursor-pointer rounded-lg bg-red-500 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-red-600"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
