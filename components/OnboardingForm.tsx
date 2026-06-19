@@ -33,6 +33,7 @@ export default function OnboardingForm({
     phone: "",
     bio: "",
     avatar_url: "",
+    logo_url: "",
   });
 
   // Social links — dynamic list the user builds during onboarding
@@ -41,6 +42,7 @@ export default function OnboardingForm({
   const [loading, setLoading] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>("");
+  const [logoFile, setLogoFile] = useState<File | null>(null);
 
   // Async check result (only set inside the debounce callback to satisfy
   // React's rule against calling setState synchronously in an effect)
@@ -135,6 +137,31 @@ export default function OnboardingForm({
     setAvatarPreview(URL.createObjectURL(file));
   };
 
+  // Store the selected logo file locally (no preview, just a name indicator).
+  // Upload only happens on submit. Strict image-only check enforced both
+  // client-side here and server-side via the Supabase bucket's allowed_mime_types.
+  const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/svg+xml",
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Logo must be an image (JPG, PNG, WebP, or SVG)");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Logo must be less than 5MB");
+      return;
+    }
+
+    setLogoFile(file);
+  };
+
   // ---- Social link handlers ----
   const addSocialLink = () => {
     setSocialLinks((prev) => [...prev, { platform: "website", url: "" }]);
@@ -190,10 +217,32 @@ export default function OnboardingForm({
         avatarUrl = publicUrl;
       }
 
+      // 1b. Upload logo (optional, only if a file was selected)
+      let logoUrl = form.logo_url;
+      if (logoFile) {
+        const fileExt = logoFile.name.split(".").pop();
+        const filePath = `${user.id}/logo.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("logos")
+          .upload(filePath, logoFile, { upsert: true });
+
+        if (uploadError) {
+          toast.error(uploadError.message);
+          return;
+        }
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("logos").getPublicUrl(filePath);
+        logoUrl = publicUrl;
+      }
+
       // 2. Insert the profile row
       const { error: profileError } = await supabase.from("profiles").insert({
         ...form,
         avatar_url: avatarUrl,
+        logo_url: logoUrl,
         id: user.id,
       });
 
@@ -487,6 +536,31 @@ export default function OnboardingForm({
               onChange={handleChange}
               className={inputClassName}
             />
+          </div>
+
+          {/* Logo (optional) */}
+          <div>
+            <label
+              htmlFor="logo"
+              className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+            >
+              Logo{" "}
+              <span className="text-xs font-normal text-zinc-400 dark:text-zinc-500">
+                (optional)
+              </span>
+            </label>
+            <input
+              id="logo"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/svg+xml"
+              onChange={handleLogoSelect}
+              className={inputClassName}
+            />
+            {logoFile && (
+              <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                {logoFile.name} selected
+              </p>
+            )}
           </div>
 
           {/* Bio */}

@@ -53,6 +53,7 @@ export default async function EditProfilePage({
         phone: profile.phone ?? "",
         bio: profile.bio ?? "",
         avatar_url: profile.avatar_url ?? "",
+        logo_url: profile.logo_url ?? "",
       }}
       initialSocialLinks={socialLinks ?? []}
     />
