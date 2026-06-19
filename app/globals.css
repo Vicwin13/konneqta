@@ -40,6 +40,11 @@
 } */
 
 /* ---- Flip card ---- */
+.avatar{
+  border-top-right-radius: 20px;
+  border-top-left-radius: 20px;
+  position: relative;
+}
 .flip-card {
   perspective: 1200px;
 }

@@ -112,6 +112,7 @@ export default function LoginPage() {
                                     )}
                                 </button>
                             </div>
+                        <Link href="/auth/forgot-password" className="self-end text-sm text-zinc-500 hover:text-(--main-orange) cursor-pointer">Forgot password?</Link>
                     </div>
                     </div>
                     <div>

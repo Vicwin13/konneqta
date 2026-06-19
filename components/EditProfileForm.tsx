@@ -17,6 +17,7 @@ interface EditProfileFormProps {
     phone: string;
     bio: string;
     avatar_url: string;
+    logo_url: string;
   };
   initialSocialLinks: { id?: string; platform: string; url: string }[];
 }
@@ -48,6 +49,7 @@ export default function EditProfileForm({
     initialProfile.avatar_url ?? ""
   );
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -82,6 +84,29 @@ export default function EditProfileForm({
 
     setAvatarFile(file);
     setAvatarPreview(URL.createObjectURL(file));
+  };
+
+  // Store the selected logo file locally (no preview). Strict image-only check.
+  const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/svg+xml",
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Logo must be an image (JPG, PNG, WebP, or SVG)");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Logo must be less than 5MB");
+      return;
+    }
+
+    setLogoFile(file);
   };
 
   // ---- Social link handlers ----
@@ -141,6 +166,27 @@ export default function EditProfileForm({
         avatarUrl = publicUrl;
       }
 
+      // 1b. Upload new logo if a file was selected
+      let logoUrl = form.logo_url;
+      if (logoFile) {
+        const fileExt = logoFile.name.split(".").pop();
+        const filePath = `${user.id}/logo.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("logos")
+          .upload(filePath, logoFile, { upsert: true });
+
+        if (uploadError) {
+          toast.error(uploadError.message);
+          return;
+        }
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("logos").getPublicUrl(filePath);
+        logoUrl = publicUrl;
+      }
+
       // 2. UPDATE the profile row
       const { error: profileError } = await supabase
         .from("profiles")
@@ -152,6 +198,7 @@ export default function EditProfileForm({
           phone: form.phone,
           bio: form.bio,
           avatar_url: avatarUrl,
+          logo_url: logoUrl,
         })
         .eq("id", user.id);
 
@@ -388,6 +435,35 @@ export default function EditProfileForm({
             />
           </div>
 
+          {/* Logo (optional) */}
+          <div>
+            <label
+              htmlFor="logo"
+              className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+            >
+              Logo{" "}
+              <span className="text-xs font-normal text-zinc-400 dark:text-zinc-500">
+                (optional)
+              </span>
+            </label>
+            <input
+              id="logo"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/svg+xml"
+              onChange={handleLogoSelect}
+              className={inputClassName}
+            />
+            {logoFile ? (
+              <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                {logoFile.name} selected
+              </p>
+            ) : form.logo_url ? (
+              <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+                Current logo set
+              </p>
+            ) : null}
+          </div>
+
           {/* Bio */}
           <div>
             <label
@@ -435,7 +511,7 @@ export default function EditProfileForm({
               </button>
             </div>
 
-            <div className="scrollable-links flex min-h-10 max-h-12 flex-col gap-2 overflow-y-auto pr-1">
+            <div className="scrollable-links flex min-h-10 max-h-50 flex-col gap-2 overflow-y-auto pr-1">
               {socialLinks.map((link, index) => {
                 const platform = SOCIAL_PLATFORMS.find(
                   (p) => p.id === link.platform
@@ -453,7 +529,7 @@ export default function EditProfileForm({
                         onChange={(e) =>
                           updateSocialLink(index, "platform", e.target.value)
                         }
-                        className={`w-36 rounded-lg border border-zinc-300 bg-white py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 ${
+                        className={`w-30 rounded-lg border border-zinc-300 bg-white py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 ${
                           PlatformIcon ? "pl-8 pr-2" : "px-2"
                         }`}
                       >
