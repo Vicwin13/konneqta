@@ -18,6 +18,7 @@ type Profile = {
   company: string | null;
   bio: string | null;
   avatar_url: string | null;
+  logo_url: string | null;
 };
 
 /** Circular icon button shared by the card's action row. */
@@ -65,7 +66,8 @@ export default function ProfileCard({
   const [copied, setCopied] = useState(false);
 
   const displayName = profile.full_name || profile.username;
-  const hasJobInfo = Boolean(profile.job_title || profile.company);
+  
+
 
   // Compute the absolute profile URL lazily at click-time (client-only).
   const getProfileUrl = () =>
@@ -113,37 +115,66 @@ export default function ProfileCard({
               WebkitBackfaceVisibility: "hidden",
             }}
           >
+            <div className=" overflow-hidden avatar relative">
+
             {profile.avatar_url && (
               <Image
-                src={profile.avatar_url}
-                alt={profile.username}
-                width={112}
-                height={112}
-                priority
-                className="mb-5 h-28 w-28 rounded-full object-cover ring-4 ring-zinc-100 dark:ring-zinc-900"
-                unoptimized
+              src={profile.avatar_url}
+              alt={profile.username}
+              width={290}
+              height={290}
+              priority
+              className=" h-56 max-w-65 object-cover"
+              unoptimized
               />
-            )}
+              )}
+              <div className="absolute top-0 right-0  w-20 h-full bg-[#7751b8]/70 ">
 
-            <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-              {displayName}
-            </h1>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              @{profile.username}
-            </p>
+            </div>
+            </div>
 
-            {hasJobInfo && (
-              <p className="mt-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <div className="bg-[#201F1F] w-65 rounded-b-3xl px-5 py-6">
+
+           
+           
+              <h1 className="text-lg text-left font-medium  text-zinc-900 dark:text-zinc-50">
+                {displayName}
+              </h1>
+            
+
+              <div className="flex items-center justify-between">
+  
+              <div className="flex gap-2 items-center">
+            
+              <p className=" text-sm font-light text-zinc-700 dark:text-[#CFCFCF]">
                 {profile.job_title}
-                {profile.job_title && profile.company ? " · " : ""}
-                {profile.company}
+              </p>
+           
+            <p className=" text-sm font-medium text-zinc-500 dark:text-[#CFCFCF]">{profile.company}</p>
+                </div>
+              {profile.logo_url && (
+                <Image
+                  src={profile.logo_url}
+                  alt={`${displayName} logo`}
+                  width={15}
+                  height={15}
+                  className="h-4 w-4 shrink-0  object-contain"
+                  unoptimized
+                />
+              )}
+</div>
+            </div>
+
+             {profile.bio && (
+              <p className="my-3 text-center text-sm text-zinc-600 dark:text-zinc-400">
+                {profile.bio}
               </p>
             )}
 
             <button
               type="button"
               onClick={() => setFlipped(true)}
-              className="mt-8 flex cursor-pointer items-center gap-2 rounded-full bg-(--main-orange) px-5 py-2.5 text-sm font-medium text-white transition-colors hover:opacity-90"
+              className="mt-8 flex cursor-pointer w-10 h-10 items-center gap-2 rounded-full bg-(--main-orange) px-3 py-1.5 text-sm font-medium text-white transition-colors hover:opacity-90"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -159,7 +190,7 @@ export default function ProfileCard({
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                 <path d="M3 3v5h5" />
               </svg>
-              View Links
+             
             </button>
           </div>
 
@@ -174,11 +205,7 @@ export default function ProfileCard({
               transform: "rotateY(180deg)",
             }}
           >
-            {profile.bio && (
-              <p className="mb-4 text-center text-sm text-zinc-600 dark:text-zinc-400">
-                {profile.bio}
-              </p>
-            )}
+          
 
             <div className="scrollable-links flex min-h-0 flex-1 flex-wrap content-start justify-center gap-3 overflow-y-auto pr-1">
               {socialLinks.length === 0 ? (
@@ -219,7 +246,7 @@ export default function ProfileCard({
             <button
               type="button"
               onClick={() => setFlipped(false)}
-              className="mt-4 flex cursor-pointer items-center justify-center gap-2 rounded-full border border-zinc-200 px-5 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              className="mt-4 flex mx-auto cursor-pointer w-10 h-10 items-center gap-2 rounded-full bg-(--main-orange) px-3 py-1.5 text-sm font-medium text-white transition-colors hover:opacity-90"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -235,7 +262,7 @@ export default function ProfileCard({
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                 <path d="M3 3v5h5" />
               </svg>
-              Back
+             
             </button>
           </div>
         </div>

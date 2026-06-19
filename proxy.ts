@@ -11,7 +11,15 @@ const PROTECTED_ROUTES = ["/onboarding", "/post-login"];
  * Routes that should ONLY be visible to logged-OUT users.
  * If a logged-in user visits these, they're redirected to "/post-login".
  */
-const AUTH_ROUTES = ["/auth/login", "/auth/signup"];
+const AUTH_ROUTES = ["/auth/login", "/auth/signup", "/auth/forgot-password"];
+
+// NOTE: /auth/reset-password is intentionally NOT an auth route.
+// The recovery email link exchanges its code for a session in
+// /auth/reset-callback (which then redirects here), so the user arrives
+// already logged in. Adding it to AUTH_ROUTES would break the flow by
+// redirecting them to /post-login. The page guards itself: if there's
+// no session (invalid/expired link), it sends the user back to
+// /auth/forgot-password with an error toast.
 
 /**
  * Checks if a path matches a route pattern.
@@ -85,6 +93,11 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Run on all routes except static assets / api / auth callback
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|auth/callback).*)"],
+  // Run on all routes except static assets / api / auth callbacks.
+  // Both callbacks exchange a code for a session and must run without
+  // middleware interference (otherwise the session refresh can race with
+  // the code exchange).
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|auth/callback|auth/reset-callback).*)",
+  ],
 };
