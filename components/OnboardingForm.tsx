@@ -1,7 +1,15 @@
 "use client";
 
+import {
+  ALLOWED_IMAGE_TYPES,
+  isSafeEmailValue,
+  isSafeHttpUrl,
+  safeFileExtension,
+} from "@/lib/url-validation";
+import { dataUrlToBlob, generateQrDataUrl } from "@/lib/qr";
 import { useEffect, useRef, useState } from "react";
 
+import InfoTip from "./InfoTip";
 import { SOCIAL_PLATFORMS } from "@/lib/social-platforms";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -31,6 +39,7 @@ export default function OnboardingForm({
     job_title: "",
     company: "",
     phone: "",
+    show_phone: false,
     bio: "",
     avatar_url: "",
     logo_url: "",
@@ -119,8 +128,8 @@ export default function OnboardingForm({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image file");
+    if (!(ALLOWED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
+      toast.error("Avatar must be a JPG, PNG, or WebP image");
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -144,14 +153,8 @@ export default function OnboardingForm({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const allowedTypes = [
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-      "image/svg+xml",
-    ];
-    if (!allowedTypes.includes(file.type)) {
-      toast.error("Logo must be an image (JPG, PNG, WebP, or SVG)");
+    if (!(ALLOWED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
+      toast.error("Logo must be a JPG, PNG, or WebP image");
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -199,7 +202,7 @@ export default function OnboardingForm({
       // 1. Upload avatar (only happens on submit, not on selection)
       let avatarUrl = form.avatar_url;
       if (avatarFile) {
-        const fileExt = avatarFile.name.split(".").pop();
+        const fileExt = safeFileExtension(avatarFile.name);
         const filePath = `${user.id}/avatar.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
@@ -220,7 +223,7 @@ export default function OnboardingForm({
       // 1b. Upload logo (optional, only if a file was selected)
       let logoUrl = form.logo_url;
       if (logoFile) {
-        const fileExt = logoFile.name.split(".").pop();
+        const fileExt = safeFileExtension(logoFile.name);
         const filePath = `${user.id}/logo.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
@@ -238,9 +241,13 @@ export default function OnboardingForm({
         logoUrl = publicUrl;
       }
 
-      // 2. Insert the profile row
+      // 2. Insert the profile row.
+      //    show_phone is forced to false when the phone field is empty, so
+      //    the owner can never accidentally expose a number they left blank.
+      const phoneIsEmpty = !form.phone.trim();
       const { error: profileError } = await supabase.from("profiles").insert({
         ...form,
+        show_phone: phoneIsEmpty ? false : form.show_phone,
         avatar_url: avatarUrl,
         logo_url: logoUrl,
         id: user.id,
@@ -251,9 +258,18 @@ export default function OnboardingForm({
         return;
       }
 
-      // 3. Insert any social links the user added (filter out empty URLs)
+      // 3. Insert any social links the user added.
+      //    SECURITY: reject dangerous URL schemes (javascript:, data:, etc.)
+      //    before they reach the DB. The DB CHECK constraint is the real
+      //    barrier; this is defense-in-depth + user feedback.
       const linksToInsert = socialLinks
-        .filter((link) => link.url.trim().length > 0)
+        .filter((link) => {
+          const trimmed = link.url.trim();
+          if (!trimmed) return false;
+          return link.platform === "email"
+            ? isSafeEmailValue(trimmed)
+            : isSafeHttpUrl(trimmed);
+        })
         .map((link) => ({
           profile_id: user.id,
           platform: link.platform,
@@ -272,6 +288,40 @@ export default function OnboardingForm({
             "Profile created, but we couldn't save your social links. You can add them later."
           );
         }
+      }
+
+      // 4. Generate + persist the profile QR code (client-side gen → Storage).
+      //    Failure here must NOT block the profile — warn and proceed.
+      try {
+        const profileUrl = `${window.location.origin}/${form.username}`;
+        const qrDataUrl = await generateQrDataUrl({
+          profileUrl,
+          logoUrl: logoUrl || null,
+        });
+        const qrBlob = dataUrlToBlob(qrDataUrl);
+        const qrPath = `${user.id}/qr.png`;
+
+        const { error: qrUploadError } = await supabase.storage
+          .from("qrcodes")
+          .upload(qrPath, qrBlob, {
+            upsert: true,
+            contentType: "image/png",
+          });
+
+        if (qrUploadError) {
+          console.error("qr upload error:", qrUploadError);
+        } else {
+          const {
+            data: { publicUrl: qrPublicUrl },
+          } = supabase.storage.from("qrcodes").getPublicUrl(qrPath);
+
+          await supabase
+            .from("profiles")
+            .update({ qr_code_url: qrPublicUrl })
+            .eq("id", user.id);
+        }
+      } catch (qrErr) {
+        console.error("qr generation error:", qrErr);
       }
 
       router.push(`/${form.username}`);
@@ -519,7 +569,7 @@ export default function OnboardingForm({
             </div>
           </div>
 
-          {/* Phone */}
+          {/* Phone + show-in-vCard toggle */}
           <div>
             <label
               htmlFor="phone"
@@ -536,6 +586,40 @@ export default function OnboardingForm({
               onChange={handleChange}
               className={inputClassName}
             />
+
+            {/* Toggle: include this phone number in the .vcf contact file. */}
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.show_phone}
+                disabled={form.phone.trim().length === 0}
+                onClick={() =>
+                  setForm((prev) => ({ ...prev, show_phone: !prev.show_phone }))
+                }
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  form.show_phone
+                    ? "bg-(--main-orange)"
+                    : "bg-zinc-300 dark:bg-zinc-700"
+                }`}
+                aria-label="Show phone number in contact file"
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    form.show_phone ? "translate-x-4" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                {form.phone.trim()
+                  ? "Show in contact file"
+                  : "Enter a number to enable"}
+              </span>
+              <InfoTip
+                content="When ON, your phone number is included in the .vcf contact file people download from your profile via “Save Contact”. When OFF (default), it stays private."
+                side="top"
+              />
+            </div>
           </div>
 
           {/* Logo (optional) */}
@@ -552,7 +636,7 @@ export default function OnboardingForm({
             <input
               id="logo"
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/svg+xml"
+              accept="image/jpeg,image/png,image/webp"
               onChange={handleLogoSelect}
               className={inputClassName}
             />
