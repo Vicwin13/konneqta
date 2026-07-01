@@ -8,6 +8,7 @@ export async function GET(request: Request) {
 
     console.log("Auth callback hit. Code:", code ? "present" : "MISSING");
     console.log("Next:", next);
+    console.log("FULL URL:", request.url);
 
     if (code){
         const supabase = await createClient();

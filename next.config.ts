@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSerwist } from "@serwist/turbopack";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseHost = (() => {
@@ -24,4 +25,8 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// @serwist/turbopack wraps the Next config to enable Turbopack-native service
+// worker compilation. The SW source lives at app/sw.ts and is served by the
+// route handler at app/serwist/route.ts (output: /serwist.js).
+// This works with Next.js 16's default Turbopack for both dev and build.
+export default withSerwist(nextConfig);

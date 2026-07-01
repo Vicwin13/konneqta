@@ -4,6 +4,9 @@ import Image from "next/image";
 import { PLATFORM_MAP } from "@/lib/social-platforms";
 import ShareMenu from "./ShareMenu";
 import Tooltip from "./Tooltip";
+import {
+  safeHref,
+} from "@/lib/url-validation";
 import { useState } from "react";
 
 type SocialLink = {
@@ -19,6 +22,7 @@ type Profile = {
   bio: string | null;
   avatar_url: string | null;
   logo_url: string | null;
+  qr_code_url: string | null;
 };
 
 /** Circular icon button shared by the card's action row. */
@@ -94,7 +98,7 @@ export default function ProfileCard({
   return (
     <div className="w-full max-w-sm">
       {/* ---- Flip card ---- */}
-      <div style={{ height: 480, perspective: "1200px" }}>
+      <div style={{ height: 500, perspective: "1200px" }}>
         <div
           style={{
             position: "relative",
@@ -217,10 +221,16 @@ export default function ProfileCard({
                   const platform = PLATFORM_MAP[link.platform];
                   const Icon = platform?.icon;
                   const label = platform?.label ?? link.platform;
-                  const href =
+                  // DEFENSE-IN-DEPTH: sanitize the href at render time.
+                  // If a dangerous URL (javascript:, data:, etc.) somehow
+                  // made it into the DB, safeHref returns null and we skip
+                  // rendering the link entirely rather than render a live
+                  // XSS vector.
+                  const href = safeHref(
+                    link.url,
                     link.platform === "email"
-                      ? `mailto:${link.url}`
-                      : link.url;
+                  );
+                  if (!href) return null;
                   return (
                     <a
                       key={index}
@@ -242,6 +252,21 @@ export default function ProfileCard({
                 })
               )}
             </div>
+
+            {/* ---- QR Code (back of card) ---- */}
+            {profile.qr_code_url ? (
+              <div className=" flex flex-col items-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={profile.qr_code_url}
+                  alt={`Scan to view ${displayName}'s profile`}
+                  className="h-44 w-44 rounded-lg border border-zinc-200 bg-white object-contain dark:border-zinc-700"
+                />
+                <p className="mt-1 text-[10px] text-zinc-400 dark:text-zinc-500">
+                  Scan to connect
+                </p>
+              </div>
+            ) : null}
 
             <button
               type="button"
@@ -289,6 +314,29 @@ export default function ProfileCard({
               </svg>
             </IconButton>
           )}
+
+          {/* Save Contact — always available (name + URL), for owner & visitor. */}
+          <IconButton
+            href={`/${profile.username}/vcard`}
+            label="Save Contact"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width={16}
+              height={16}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M16 2v4a2 2 0 0 0 2 2h4" />
+              <path d="M3.27 6.96 12 12.01l8.73-5.05" />
+              <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l5 5Z" />
+              <path d="M8 14h.01M12 14h.01M16 14h.01" />
+            </svg>
+          </IconButton>
 
           <Tooltip label="Share" side="top">
             <ShareMenu username={profile.username} title={displayName} />

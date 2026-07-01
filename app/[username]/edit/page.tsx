@@ -51,6 +51,7 @@ export default async function EditProfilePage({
         job_title: profile.job_title ?? "",
         company: profile.company ?? "",
         phone: profile.phone ?? "",
+        show_phone: profile.show_phone ?? false,
         bio: profile.bio ?? "",
         avatar_url: profile.avatar_url ?? "",
         logo_url: profile.logo_url ?? "",
